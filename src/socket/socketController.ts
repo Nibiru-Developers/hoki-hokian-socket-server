@@ -1,12 +1,13 @@
 import { Server as SocketServer, Socket } from "socket.io";
+import User from "../models/User";
 
 export default function socketController(
   io: SocketServer,
   socket: Socket
 ): void {
-  console.log(`Client with ID ${socket.id} connected!`);
+  socket.on("changeUsername", async (username: string) => {
+    await User.findOneAndUpdate({ socketId: socket.id }, { username });
 
-  socket.on("disconnect", () => {
-    console.log(`Client with ID ${socket.id} disconnected!`);
+    io.emit("usernameChanged", "Username Changed");
   });
 }

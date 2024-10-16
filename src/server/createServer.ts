@@ -2,6 +2,8 @@ import http from "http";
 import express, { Express, Request, Response } from "express";
 import { Server as SocketServer, Socket } from "socket.io";
 import socketController from "../socket/socketController";
+import User from "../models/User";
+import { generateAutoIncrementNumber } from "../utils/helperFunction";
 
 const createServer: Express = express();
 
@@ -21,6 +23,18 @@ const io = new SocketServer(mainServer, {
 });
 
 io.on("connection", async (socket: Socket) => {
+  console.log(`Client with ID ${socket.id} connected!`);
+  const user = new User({
+    username: socket.handshake.query.username || `Guest ${generateAutoIncrementNumber().next().value}`,
+    socketId: socket.id,
+  });
+  await user.save();
+
+  socket.on("disconnect", async () => {
+    console.log(`Client with ID ${socket.id} disconnected!`);
+    await User.findOneAndDelete({ socketId: socket.id });
+  });
+
   socketController(io, socket);
 });
 
