@@ -4,9 +4,13 @@ import Env from "../utils/Env";
 const connectDB = async () => {
   try {
     await mongoose.connect(Env.MONGO_URI);
+    await mongoose.connection.dropCollection("users_in_lobby");
+    await mongoose.connection.dropCollection("rooms");
+
+    console.log("MongoDB cleaned successfully");
     console.log("MongoDB connected successfully");
   } catch (error) {
-    console.error("MongoDB connection error:", error);
+    console.log("MongoDB connection error:", error);
     process.exit(1);
   }
 };

@@ -17,7 +17,7 @@ import Env from "./utils/Env";
       console.log(`Received ${signal}. Shutting down gracefully...`);
       server.close(() => {
         mongoose.disconnect();
-        process.exit(0);
+        process.exit(1);
       });
     };
 

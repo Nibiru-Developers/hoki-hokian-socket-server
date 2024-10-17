@@ -3,14 +3,12 @@ import mongoose, { Document, Schema } from "mongoose";
 interface IUser extends Document {
   socketId: string;
   username: string;
-  roomId?: string;
 }
 
-const UserSchema: Schema = new Schema({
+const UsersInLobbySchema: Schema = new Schema({
   socketId: { type: String, required: true },
   username: { type: String, required: true },
-  roomId: { type: String, required: false },
 });
+const UsersInLobby = mongoose.model<IUser>("users_in_lobby", UsersInLobbySchema);
 
-const User = mongoose.model<IUser>("users", UserSchema);
-export default User;
+export default UsersInLobby;
