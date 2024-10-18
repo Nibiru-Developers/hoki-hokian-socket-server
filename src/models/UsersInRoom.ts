@@ -9,12 +9,14 @@ export interface IUser extends Document {
 interface IUsersInRoom extends Document {
   roomId: string;
   roomName: string;
+  alreadyPlaying: boolean;
   users: IUser[];
 }
 
 const UsersInRoomSchema: Schema = new Schema({
   roomId: { type: String, required: true },
   roomName: { type: String, required: true },
+  alreadyPlaying: { type: Boolean, required: false },
   users: [
     {
       socketId: { type: String, required: true },

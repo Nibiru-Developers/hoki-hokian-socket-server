@@ -4,7 +4,7 @@ import Env from "../utils/Env";
 const connectDB = async () => {
   try {
     await mongoose.connect(Env.MONGO_URI);
-    await mongoose.connection.dropCollection("users_in_lobby");
+    await mongoose.connection.dropCollection("users_in_lobbies");
     await mongoose.connection.dropCollection("rooms");
 
     console.log("MongoDB cleaned successfully");

@@ -9,6 +9,6 @@ const UsersInLobbySchema: Schema = new Schema({
   socketId: { type: String, required: true },
   username: { type: String, required: true },
 });
-const UsersInLobby = mongoose.model<IUser>("users_in_lobby", UsersInLobbySchema);
+const UsersInLobby = mongoose.model<IUser>("users_in_lobbies", UsersInLobbySchema);
 
 export default UsersInLobby;

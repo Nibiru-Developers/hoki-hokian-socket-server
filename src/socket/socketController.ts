@@ -6,7 +6,6 @@ export default function socketController(
   io: SocketServer,
   socket: Socket
 ): void {
-  // change username
   socket.on("changeUsername", async (username: string) => {
     const user = await UsersInLobby.findOneAndUpdate(
       { socketId: socket.id },
@@ -14,7 +13,7 @@ export default function socketController(
     );
     refreshUserList();
 
-    io.emit("usernameChanged", "Username Changed");
+    socket.emit("usernameChanged", "Username Changed");
     sendLog(io, `${user?.username} change username to ${username}`);
   });
 }
