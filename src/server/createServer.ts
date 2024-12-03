@@ -1,27 +1,40 @@
 import http from "http";
 import express, { Express, Request, Response } from "express";
+import cors from "cors";
+import helmet from "helmet";
 import { Server as SocketServer, Socket } from "socket.io";
-import socketController from "../socket/socketController";
+import bcrypt from "bcrypt";
 import socketRoomController from "../socket/socketRoomController";
-import UsersInLobby from "../models/UsersInLobby";
-import UsersInRoom from "../models/UsersInRoom";
+import Guest from "../models/Guest";
+import Room from "../models/Room";
 import { generateAutoIncrementNumber } from "../utils/helperFunction";
 
 const createServer: Express = express();
+
+createServer.use(express.json());
+createServer.use(helmet());
+createServer.use(cors());
 
 createServer.get("/", (req: Request, res: Response) => {
   return res.status(200).send("Server Online!");
 });
 
-createServer.get("/create-room", async (req: Request, res: Response) => {
+createServer.post("/create-room", async (req: Request, res: Response) => {
   try {
-    const { username, roomName } = req.body;
+    const { roomName, password } = req.body;
     const roomId = `room_${generateAutoIncrementNumber().next().value}`;
 
-    const room = new UsersInRoom({
+    let passwordHash = "";
+    if (password) {
+      passwordHash = await bcrypt.hash(password, 10);
+    }
+
+    const room = new Room({
       roomId,
       roomName,
-      users: [],
+      alreadyPlaying: false,
+      players: [],
+      password: password ? passwordHash : "",
     });
     await room.save();
 
@@ -31,14 +44,13 @@ createServer.get("/create-room", async (req: Request, res: Response) => {
       statusCode: 200,
       message: "Success",
       data: {
-        username: username,
         roomId,
       },
     });
   } catch (error) {
     return res.status(500).json({
       statusCode: 500,
-      message: error,
+      message: `${error}`,
       error: "Internal Server Error",
     });
   }
@@ -55,26 +67,26 @@ const io = new SocketServer(mainServer, {
   },
 });
 
-io.on("connection", async (socket: Socket) => {
+io.of("/lobby").on("connection", async (socket: Socket) => {
   try {
-    const username = socket.handshake.query.username! as string;
+    const name = socket.handshake.query.name;
+    if(!name ||  typeof name !== "string") throw new Error("Name Is Required");
 
-    const user = new UsersInLobby({
+    const guest = new Guest({
       socketId: socket.id,
-      username: username,
+      name: name,
     });
 
-    await user.save();
+    await guest.save();
     refreshUserList();
-    sendLog(io, `${user.username} joined lobby`);
+    refreshRoomList();
+    sendLog(`${guest.name} joined lobby`);
 
     socket.on("disconnect", async () => {
-      const user = await UsersInLobby.findOneAndDelete({ socketId: socket.id });
+      const guest = await Guest.findOneAndDelete({ socketId: socket.id });
       refreshUserList();
-      sendLog(io, `${user?.username} left lobby`);
+      sendLog(`${guest?.name} left lobby`);
     });
-
-    socketController(io, socket);
   } catch (error) {
     socket.emit("error", "Critical " + error);
     socket.disconnect();
@@ -83,41 +95,55 @@ io.on("connection", async (socket: Socket) => {
 
 io.of("/room").on("connection", async (socket: Socket) => {
   try {
-    const username = socket.handshake.query.username! as string;
-    const roomId = socket.handshake.query.roomId! as string;
+    const name = socket.handshake.query.name;
+    if(!name ||  typeof name !== "string") throw new Error("Name Is Required");
 
-    const room = await UsersInRoom.findOne({ roomId });
+    const roomId = socket.handshake.query.roomId;
+    if(!roomId ||  typeof roomId !== "string") throw new Error("Room Id Is Required");
+
+    const password = socket.handshake.query.password;
+    if(!password ||  typeof password !== "string") throw new Error("Password Is Required");
+
+    const room = await Room.findOne({ roomId });
     if (!room) {
-      throw new Error("Room not found");
+      throw new Error("Room Not Found");
     } else if (room.alreadyPlaying) {
-      throw new Error("Room already playing");
+      throw new Error("Room Already Playing");
+    } else if (await bcrypt.compare(password, room.password)) {
+      throw new Error("Wrong Room Password");
     } else {
       socket.join(roomId);
 
-      await UsersInRoom.findOneAndUpdate(
+      const isLeader = room.players.length === 0;
+      await Room.findOneAndUpdate(
         { roomId },
         {
-          users: [
-            ...room.users,
-            { socketId: socket.id, username, isLeader: false },
-          ],
+          $push: {
+            players: {
+              socketId: socket.id,
+              name: name,
+              isLeader: isLeader,
+            },
+          },
         }
       );
 
       refreshUserList(roomId);
-      sendLog(io, `${username} joined room`, `${roomId}`);
+      sendLog(`${name} joined room`, roomId);
     }
 
     socket.on("disconnect", async () => {
-      const room = await UsersInRoom.findOne({ roomId });
-      await UsersInRoom.findOneAndUpdate(
-        { roomId },
-        {
-          users: room?.users.filter((user) => user.socketId !== socket.id),
-        }
-      );
-      refreshUserList(roomId);
-      sendLog(io, `${room?.users.filter((user) => user.socketId !== socket.id)[0].username } left room`, roomId);
+      const room = await Room.findOne({ roomId });
+      if (room?.players.length === 1) {
+        await Room.findOneAndDelete({ roomId });
+      } else {
+        await Room.findOneAndUpdate(
+          { roomId },
+          { $pull: { players: { socketId: socket.id } } }
+        );
+        refreshUserList(roomId);
+        sendLog(`${room?.players.filter((player) => player.socketId !== socket.id)[0].name} left room`, roomId);
+      }
     });
 
     socketRoomController(io, socket);
@@ -128,25 +154,25 @@ io.of("/room").on("connection", async (socket: Socket) => {
 });
 
 export async function refreshUserList(roomId?: string) {
-  if (roomId) {
-    const users = await UsersInRoom.findOne({ roomId });
-    io.of("/room").to(roomId).emit("userList", users);
+  if (!roomId) {
+    const players = await Guest.find();
+    io.of("/lobby").emit("userList", players);
   } else {
-    const users = await UsersInLobby.find();
-    io.emit("userList", users);
+    const players = await Room.findOne({ roomId });
+    io.of("/room").to(roomId).emit("userList", players);
   }
 }
 
 export async function refreshRoomList() {
-  const rooms = await UsersInRoom.find();
-  io.emit("roomList", rooms);
+  const rooms = await Room.find();
+  io.of("/lobby").emit("roomList", rooms);
 }
 
-export function sendLog(io: SocketServer, message: string, roomId?: string) {
-  if (roomId) {
-    io.of("/room").to(roomId).emit("log", message);
+export function sendLog(message: string, roomId?: string) {
+  if (!roomId) {
+    io.of("/lobby").emit("log", message);
   } else {
-    io.emit("log", message);
+    io.of("/room").to(roomId).emit("log", message);
   }
 }
 

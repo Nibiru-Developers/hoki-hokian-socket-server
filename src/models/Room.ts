@@ -1,30 +1,32 @@
 import mongoose, { Document, Schema } from "mongoose";
 
-export interface IUser extends Document {
+export interface IPlayer extends Document {
   socketId: string;
-  username: string;
+  name: string;
   isLeader: boolean;
 }
 
-interface IUsersInRoom extends Document {
+interface IRoom extends Document {
   roomId: string;
   roomName: string;
   alreadyPlaying: boolean;
-  users: IUser[];
+  players: IPlayer[];
+  password: string;
 }
 
-const UsersInRoomSchema: Schema = new Schema({
+const RoomSchema: Schema = new Schema({
   roomId: { type: String, required: true },
   roomName: { type: String, required: true },
   alreadyPlaying: { type: Boolean, required: false },
-  users: [
+  players: [
     {
       socketId: { type: String, required: true },
-      username: { type: String, required: true },
+      name: { type: String, required: true },
       isLeader: { type: Boolean, required: true },
     },
   ],
+  password: { type: String },
 });
-const UsersInRoom = mongoose.model<IUsersInRoom>("rooms", UsersInRoomSchema);
+const Room = mongoose.model<IRoom>("rooms", RoomSchema);
 
-export default UsersInRoom;
+export default Room;
